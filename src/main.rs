@@ -90,7 +90,6 @@ impl<'p> Playground<'p> {
     fn new(width: u32, height: u32) -> Self {
         let mut nodes = Vec::<Box<Node<'p>>>::new();
         for i in 0..(height * width) {
-            println!("{}. Add node at position {},{}", i, i % width, i / height);
             nodes.push(Box::new(Node::new(i % width, i / height, NodeType::Empty)));
         }
 
@@ -125,47 +124,39 @@ impl<'p> Playground<'p> {
                     },
                     Event::MouseButtonPressed { button: _, x, y } => match self.state {
                         PlaygroundState::SelectStartPoint => {
-                            let node = self.get_node(
-                                x as u32 / RECTANGLE_SIDE_SIZE,
-                                y as u32 / RECTANGLE_SIDE_SIZE,
-                            );
-                            match node {
-                                Some(node) => {
-                                    if node.r#type == NodeType::Empty {
-                                        node.set_type(NodeType::Start);
-                                    }
-                                }
-                                None => println!("Cannot find desired node!"),
+                            let node = self
+                                .get_node(
+                                    x as u32 / RECTANGLE_SIDE_SIZE,
+                                    y as u32 / RECTANGLE_SIDE_SIZE,
+                                )
+                                .unwrap();
+                            if node.r#type == NodeType::Empty {
+                                node.set_type(NodeType::Start);
                             }
                             self.state = PlaygroundState::SelectDestination;
                         }
                         PlaygroundState::SelectDestination => {
-                            let node = self.get_node(
-                                x as u32 / RECTANGLE_SIDE_SIZE,
-                                y as u32 / RECTANGLE_SIDE_SIZE,
-                            );
-                            match node {
-                                Some(node) => {
-                                    if node.r#type == NodeType::Empty {
-                                        node.set_type(NodeType::Destination);
-                                    }
-                                }
-                                None => println!("Cannot find desired node!"),
+                            let node = self
+                                .get_node(
+                                    x as u32 / RECTANGLE_SIDE_SIZE,
+                                    y as u32 / RECTANGLE_SIDE_SIZE,
+                                )
+                                .unwrap();
+                            if node.r#type == NodeType::Empty {
+                                node.set_type(NodeType::Destination);
                             }
                             self.state = PlaygroundState::BuildWall;
                         }
                         PlaygroundState::BuildWall => {
-                            let node = self.get_node(
-                                x as u32 / RECTANGLE_SIDE_SIZE,
-                                y as u32 / RECTANGLE_SIDE_SIZE,
-                            );
-                            match node {
-                                Some(node) => {
-                                    if node.r#type == NodeType::Empty {
-                                        node.set_type(NodeType::Wall);
-                                    }
-                                }
-                                None => println!("Cannot find desired node!"),
+                            let node = self
+                                .get_node(
+                                    x as u32 / RECTANGLE_SIDE_SIZE,
+                                    y as u32 / RECTANGLE_SIDE_SIZE,
+                                )
+                                .unwrap();
+
+                            if node.r#type == NodeType::Empty {
+                                node.set_type(NodeType::Wall);
                             }
                         }
                         PlaygroundState::Play => {
@@ -175,13 +166,10 @@ impl<'p> Playground<'p> {
                             );
                             match adj_nodes {
                                 Some(nodes) => {
-                                    println!("Size {}", nodes.len());
                                     for node in nodes.into_iter() {
-                                        println!(
-                                            "Adjust color for node {} {}",
-                                            node.position.x, node.position.y
-                                        );
-                                        node.set_type(NodeType::Visited);
+                                        if node.r#type != NodeType::Destination {
+                                            node.set_type(NodeType::Visited);
+                                        }
                                     }
                                 }
                                 _ => (),
