@@ -7,52 +7,56 @@ use sfml::{
     window::{Event, Key, Style},
 };
 
+#[derive(Debug)]
 struct Position {
-    x: f32,
-    y: f32,
+    x: u32,
+    y: u32,
 }
 
+#[derive(Debug, PartialEq)]
 enum NodeType {
     Start,
     Destination,
     Wall,
+    Visited,
+    Empty,
 }
 
 const RECTANGLE_SIDE_SIZE: u32 = 30;
 
+#[derive(Debug)]
 struct Node<'a> {
     position: Position,
-    visited: bool,
     r#type: NodeType,
     shape: RectangleShape<'a>,
 }
 
 impl Node<'_> {
     fn new(x: u32, y: u32, r#type: NodeType) -> Self {
-        let position: Position = Position {
-            x: (x / RECTANGLE_SIDE_SIZE * RECTANGLE_SIDE_SIZE) as f32,
-            y: (y / RECTANGLE_SIDE_SIZE * RECTANGLE_SIDE_SIZE) as f32,
-        };
         let mut shape = RectangleShape::new();
-        match r#type {
-            NodeType::Start => shape.set_fill_color(Color::BLUE),
-            NodeType::Destination => shape.set_fill_color(Color::GREEN),
-            NodeType::Wall => shape.set_fill_color(Color::RED),
-        }
         shape.set_size(Vector2f::new(
             RECTANGLE_SIDE_SIZE as f32,
             RECTANGLE_SIDE_SIZE as f32,
         ));
-        shape.set_position(Vector2f::new(position.x, position.y));
-        println!(
-            "Construct node at position x:{}, y:{}",
-            position.x, position.y
-        );
+        shape.set_position(Vector2f::new(
+            (x * RECTANGLE_SIDE_SIZE) as f32,
+            (y * RECTANGLE_SIDE_SIZE) as f32,
+        ));
         Self {
             r#type,
-            position,
-            visited: false,
+            position: Position { x, y },
             shape,
+        }
+    }
+
+    fn set_type(&mut self, r#type: NodeType) {
+        self.r#type = r#type;
+        match self.r#type {
+            NodeType::Start => self.shape.set_fill_color(Color::BLUE),
+            NodeType::Destination => self.shape.set_fill_color(Color::GREEN),
+            NodeType::Wall => self.shape.set_fill_color(Color::RED),
+            NodeType::Empty => self.shape.set_fill_color(Color::WHITE),
+            NodeType::Visited => self.shape.set_fill_color(Color::YELLOW),
         }
     }
 }
@@ -74,17 +78,27 @@ enum PlaygroundState {
     Play,
 }
 
-struct Playground<'a> {
-    nodes: Vec<Box<Node<'a>>>,
+struct Playground<'p> {
+    nodes: Vec<Box<Node<'p>>>,
     window: RenderWindow,
     state: PlaygroundState,
+    width: u32,
+    height: u32,
 }
 
-impl Playground<'_> {
+impl<'p> Playground<'p> {
     fn new(width: u32, height: u32) -> Self {
+        let mut nodes = Vec::<Box<Node<'p>>>::new();
+        for i in 0..(height * width) {
+            println!("{}. Add node at position {},{}", i, i % width, i / height);
+            nodes.push(Box::new(Node::new(i % width, i / height, NodeType::Empty)));
+        }
+
         Self {
             state: PlaygroundState::SelectStartPoint,
-            nodes: Vec::new(),
+            nodes,
+            width,
+            height,
             window: RenderWindow::new(
                 (width * RECTANGLE_SIDE_SIZE, height * RECTANGLE_SIDE_SIZE),
                 "A Star",
@@ -104,35 +118,75 @@ impl Playground<'_> {
                         ctrl: _,
                         shift: _,
                         system: _,
+                        scan: _,
                     } => match code {
                         Key::Enter => self.state = PlaygroundState::Play,
                         _ => (),
                     },
                     Event::MouseButtonPressed { button: _, x, y } => match self.state {
                         PlaygroundState::SelectStartPoint => {
-                            self.nodes.push(Box::new(Node::new(
-                                x as u32,
-                                y as u32,
-                                NodeType::Start,
-                            )));
+                            let node = self.get_node(
+                                x as u32 / RECTANGLE_SIDE_SIZE,
+                                y as u32 / RECTANGLE_SIDE_SIZE,
+                            );
+                            match node {
+                                Some(node) => {
+                                    if node.r#type == NodeType::Empty {
+                                        node.set_type(NodeType::Start);
+                                    }
+                                }
+                                None => println!("Cannot find desired node!"),
+                            }
                             self.state = PlaygroundState::SelectDestination;
                         }
                         PlaygroundState::SelectDestination => {
-                            self.nodes.push(Box::new(Node::new(
-                                x as u32,
-                                y as u32,
-                                NodeType::Destination,
-                            )));
+                            let node = self.get_node(
+                                x as u32 / RECTANGLE_SIDE_SIZE,
+                                y as u32 / RECTANGLE_SIDE_SIZE,
+                            );
+                            match node {
+                                Some(node) => {
+                                    if node.r#type == NodeType::Empty {
+                                        node.set_type(NodeType::Destination);
+                                    }
+                                }
+                                None => println!("Cannot find desired node!"),
+                            }
                             self.state = PlaygroundState::BuildWall;
                         }
                         PlaygroundState::BuildWall => {
-                            self.nodes.push(Box::new(Node::new(
-                                x as u32,
-                                y as u32,
-                                NodeType::Wall,
-                            )));
+                            let node = self.get_node(
+                                x as u32 / RECTANGLE_SIDE_SIZE,
+                                y as u32 / RECTANGLE_SIDE_SIZE,
+                            );
+                            match node {
+                                Some(node) => {
+                                    if node.r#type == NodeType::Empty {
+                                        node.set_type(NodeType::Wall);
+                                    }
+                                }
+                                None => println!("Cannot find desired node!"),
+                            }
                         }
-                        PlaygroundState::Play => todo!(),
+                        PlaygroundState::Play => {
+                            let adj_nodes = self.find_adjacent_nodes(
+                                x as u32 / RECTANGLE_SIDE_SIZE,
+                                y as u32 / RECTANGLE_SIDE_SIZE,
+                            );
+                            match adj_nodes {
+                                Some(nodes) => {
+                                    println!("Size {}", nodes.len());
+                                    for node in nodes.into_iter() {
+                                        println!(
+                                            "Adjust color for node {} {}",
+                                            node.position.x, node.position.y
+                                        );
+                                        node.set_type(NodeType::Visited);
+                                    }
+                                }
+                                _ => (),
+                            }
+                        }
                     },
                     Event::Closed => {
                         break 'main_loop;
@@ -152,6 +206,40 @@ impl Playground<'_> {
             self.window.draw(node.as_ref());
         }
         self.window.display();
+    }
+
+    fn get_node(&mut self, x: u32, y: u32) -> Option<&mut Box<Node<'p>>> {
+        println!("Get node at {},{}", x, y);
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+
+        Some(&mut self.nodes[(x + y * self.width) as usize])
+    }
+
+    fn find_adjacent_nodes(&mut self, x: u32, y: u32) -> Option<Vec<&mut Box<Node<'p>>>> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+
+        let nodes: Vec<&mut Box<Node<'_>>> = self
+            .nodes
+            .iter_mut()
+            .filter(|node| {
+                let mut result = (node.r#type == NodeType::Empty
+                    || node.r#type == NodeType::Destination)
+                    && (node.position.x != x || node.position.y != y);
+                if x > 0 {
+                    result = result && node.position.x >= (x - 1);
+                }
+                if y > 0 {
+                    result = result && node.position.y >= (y - 1);
+                }
+                result = result && node.position.x <= (x + 1) && node.position.y <= (y + 1);
+                result
+            })
+            .collect();
+        Some(nodes)
     }
 }
 
