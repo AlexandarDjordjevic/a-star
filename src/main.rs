@@ -1,3 +1,5 @@
+use std::{thread, time::Duration};
+
 use sfml::{
     graphics::{
         Color, Drawable, RectangleShape, RenderStates, RenderTarget, RenderWindow, Shape,
@@ -71,6 +73,19 @@ impl Drawable for Node<'_> {
     }
 }
 
+#[derive(PartialEq)]
+enum EventType {
+    MousePressed,
+    Enter,
+    Quit,
+}
+
+struct InputEvent {
+    event_type: EventType,
+    x: u32,
+    y: u32,
+}
+
 enum PlaygroundState {
     SelectStartPoint,
     SelectDestination,
@@ -109,82 +124,50 @@ impl<'p> Playground<'p> {
 
     fn run(&mut self) {
         'main_loop: loop {
-            match self.window.poll_event() {
-                Some(event) => match event {
-                    Event::KeyPressed {
-                        code,
-                        alt: _,
-                        ctrl: _,
-                        shift: _,
-                        system: _,
-                        scan: _,
-                    } => match code {
-                        Key::Enter => self.state = PlaygroundState::Play,
-                        _ => (),
-                    },
-                    Event::MouseButtonPressed { button: _, x, y } => match self.state {
-                        PlaygroundState::SelectStartPoint => {
-                            let node = self
-                                .get_node(
-                                    x as u32 / RECTANGLE_SIDE_SIZE,
-                                    y as u32 / RECTANGLE_SIDE_SIZE,
-                                )
-                                .unwrap();
-                            if node.r#type == NodeType::Empty {
-                                node.set_type(NodeType::Start);
-                            }
-                            self.state = PlaygroundState::SelectDestination;
-                        }
-                        PlaygroundState::SelectDestination => {
-                            let node = self
-                                .get_node(
-                                    x as u32 / RECTANGLE_SIDE_SIZE,
-                                    y as u32 / RECTANGLE_SIDE_SIZE,
-                                )
-                                .unwrap();
-                            if node.r#type == NodeType::Empty {
-                                node.set_type(NodeType::Destination);
-                            }
-                            self.state = PlaygroundState::BuildWall;
-                        }
-                        PlaygroundState::BuildWall => {
-                            let node = self
-                                .get_node(
-                                    x as u32 / RECTANGLE_SIDE_SIZE,
-                                    y as u32 / RECTANGLE_SIDE_SIZE,
-                                )
-                                .unwrap();
-
-                            if node.r#type == NodeType::Empty {
-                                node.set_type(NodeType::Wall);
-                            }
-                        }
-                        PlaygroundState::Play => {
-                            let adj_nodes = self.find_adjacent_nodes(
-                                x as u32 / RECTANGLE_SIDE_SIZE,
-                                y as u32 / RECTANGLE_SIDE_SIZE,
-                            );
-                            match adj_nodes {
-                                Some(nodes) => {
-                                    for node in nodes.into_iter() {
-                                        if node.r#type != NodeType::Destination {
-                                            node.set_type(NodeType::Visited);
-                                        }
-                                    }
-                                }
-                                _ => (),
-                            }
-                        }
-                    },
-                    Event::Closed => {
-                        break 'main_loop;
-                    }
-                    _ => (),
+            let event = self.get_io_event();
+            match event {
+                Some(event) => match event.event_type {
+                    EventType::Quit => break 'main_loop,
+                    _ => self.process_event(&event),
                 },
                 None => (),
             }
-
             self.render();
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn get_io_event(&mut self) -> Option<InputEvent> {
+        match self.window.poll_event() {
+            Some(event) => match event {
+                Event::KeyPressed {
+                    code,
+                    alt: _,
+                    ctrl: _,
+                    shift: _,
+                    system: _,
+                    scan: _,
+                } => match code {
+                    Key::Enter => Some(InputEvent {
+                        event_type: EventType::Enter,
+                        x: 0,
+                        y: 0,
+                    }),
+                    _ => None,
+                },
+                Event::MouseButtonPressed { button: _, x, y } => Some(InputEvent {
+                    event_type: EventType::MousePressed,
+                    x: x as u32,
+                    y: y as u32,
+                }),
+                Event::Closed => Some(InputEvent {
+                    event_type: EventType::Quit,
+                    x: 0,
+                    y: 0,
+                }),
+                _ => return None,
+            },
+            None => return None,
         }
     }
 
@@ -194,6 +177,42 @@ impl<'p> Playground<'p> {
             self.window.draw(node.as_ref());
         }
         self.window.display();
+    }
+
+    fn process_event(&mut self, event: &InputEvent) {
+        match event.event_type {
+            EventType::MousePressed => match self.state {
+                PlaygroundState::SelectStartPoint => {
+                    self.configure_node(event.x, event.y, NodeType::Start);
+                    self.state = PlaygroundState::SelectDestination;
+                }
+                PlaygroundState::SelectDestination => {
+                    self.configure_node(event.x, event.y, NodeType::Destination);
+                    self.state = PlaygroundState::BuildWall;
+                }
+                PlaygroundState::BuildWall => {
+                    self.configure_node(event.x, event.y, NodeType::Wall);
+                }
+                _ => (),
+            },
+            EventType::Enter => match self.state {
+                PlaygroundState::BuildWall => self.state = PlaygroundState::Play,
+                _ => (),
+            },
+            _ => (),
+        }
+    }
+
+    fn configure_node(&mut self, x: u32, y: u32, node_type: NodeType) {
+        let node = self
+            .get_node(
+                x as u32 / RECTANGLE_SIDE_SIZE,
+                y as u32 / RECTANGLE_SIDE_SIZE,
+            )
+            .unwrap();
+        if node.r#type == NodeType::Empty {
+            node.set_type(node_type);
+        }
     }
 
     fn get_node(&mut self, x: u32, y: u32) -> Option<&mut Box<Node<'p>>> {
